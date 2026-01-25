@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#6200EE</color>
+    <color name="primary_dark">#3700B3</color>
+    <color name="accent">#03DAC5</color>
+
+    <color name="income">#4CAF50</color>
+    <color name="income_bg">#E8F5E9</color>
+    <color name="expense">#F44336</color>
+    <color name="expense_bg">#FFEBEE</color>
+    <color name="balance_bg">#E8EAF6</color>
+
+    <color name="background">#F5F5F5</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#BDBDBD</color>
+
+    <!-- Category colors -->
+    <color name="cat_groceries">#4CAF50</color>
+    <color name="cat_entertainment">#9C27B0</color>
+    <color name="cat_cab">#FF9800</color>
+    <color name="cat_restaurant">#E91E63</color>
+    <color name="cat_travel">#2196F3</color>
+    <color name="cat_gifts">#F44336</color>
+    <color name="cat_utilities">#607D8B</color>
+    <color name="cat_shopping">#00BCD4</color>
+    <color name="cat_health">#8BC34A</color>
+    <color name="cat_other">#795548</color>
+</resources>
