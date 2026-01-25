@@ -2,7 +2,11 @@ package com.expensetracker.data
 
 import androidx.lifecycle.LiveData
 
-class ExpenseTrackerRepository(private val expenseDao: ExpenseDao, private val incomeDao: IncomeDao) {
+class ExpenseTrackerRepository(
+    private val expenseDao: ExpenseDao,
+    private val incomeDao: IncomeDao,
+    private val categoryDao: CategoryDao
+) {
 
     // Expense operations
     suspend fun insertExpense(expense: Expense) = expenseDao.insert(expense)
@@ -32,4 +36,23 @@ class ExpenseTrackerRepository(private val expenseDao: ExpenseDao, private val i
         incomeDao.getTotalIncomeByMonth(month, year)
 
     fun getAllIncomes(): LiveData<List<Income>> = incomeDao.getAllIncomes()
+
+    suspend fun getAllExpensesSync(): List<Expense> = expenseDao.getAllExpensesSync()
+
+    suspend fun getAllIncomesSync(): List<Income> = incomeDao.getAllIncomesSync()
+
+    // Category operations
+    fun getAllCategories(): LiveData<List<Category>> = categoryDao.getAllCategories()
+
+    suspend fun getAllCategoryNames(): List<String> = categoryDao.getAllCategoryNames()
+
+    suspend fun addCategory(name: String) {
+        if (categoryDao.categoryExists(name) == 0) {
+            categoryDao.insert(Category(name = name, isCustom = true))
+        }
+    }
+
+    suspend fun deleteCategory(category: Category) = categoryDao.delete(category)
+
+    suspend fun getAllCategoriesSync(): List<Category> = categoryDao.getAllCategoriesSync()
 }

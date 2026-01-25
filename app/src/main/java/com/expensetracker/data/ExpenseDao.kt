@@ -23,6 +23,9 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses ORDER BY date DESC")
     fun getAllExpenses(): LiveData<List<Expense>>
 
+    @Query("SELECT * FROM expenses ORDER BY date DESC")
+    suspend fun getAllExpensesSync(): List<Expense>
+
     @Query("SELECT category, SUM(amount) as total FROM expenses WHERE month = :month AND year = :year GROUP BY category")
     fun getExpensesByCategory(month: Int, year: Int): LiveData<List<CategoryTotal>>
 }

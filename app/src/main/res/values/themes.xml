@@ -6,4 +6,15 @@
         <item name="colorSecondary">@color/accent</item>
         <item name="android:statusBarColor">@color/primary_dark</item>
     </style>
+
+    <style name="MonthPickerItem">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+    </style>
 </resources>

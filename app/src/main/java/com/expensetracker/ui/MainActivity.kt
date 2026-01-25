@@ -2,27 +2,34 @@ package com.expensetracker.ui
 
 import android.app.DatePickerDialog
 import android.app.Dialog
+import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.expensetracker.R
+import com.expensetracker.data.BackupManager
 import com.expensetracker.data.Expense
 import com.expensetracker.data.ExpenseCategory
 import com.expensetracker.data.Income
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import androidx.viewpager2.widget.ViewPager2
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -35,11 +42,19 @@ class MainActivity : AppCompatActivity() {
     private val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
 
     private lateinit var viewPager: ViewPager2
+    private lateinit var backupManager: BackupManager
+
+    private val importFileLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { importDataFromUri(it) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        backupManager = BackupManager(this)
         setupViews()
         observeViewModel()
     }
@@ -48,9 +63,13 @@ class MainActivity : AppCompatActivity() {
         // Month navigation
         val btnPrevMonth = findViewById<ImageButton>(R.id.btnPrevMonth)
         val btnNextMonth = findViewById<ImageButton>(R.id.btnNextMonth)
+        val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
+        val tvCurrentMonth = findViewById<TextView>(R.id.tvCurrentMonth)
 
         btnPrevMonth.setOnClickListener { viewModel.previousMonth() }
         btnNextMonth.setOnClickListener { viewModel.nextMonth() }
+        btnSettings.setOnClickListener { showSettingsDialog() }
+        tvCurrentMonth.setOnClickListener { showMonthPickerDialog() }
 
         // ViewPager and Tabs
         viewPager = findViewById(R.id.viewPager)
@@ -71,9 +90,9 @@ class MainActivity : AppCompatActivity() {
         val fabAdd = findViewById<FloatingActionButton>(R.id.fabAdd)
         fabAdd.setOnClickListener {
             when (viewPager.currentItem) {
-                0 -> showExpenseDialog(null)  // Expenses tab
-                1 -> showIncomeDialog(null)   // Income tab
-                2 -> showExpenseDialog(null)  // Categories tab - default to expense
+                0 -> showExpenseDialog(null)
+                1 -> showIncomeDialog(null)
+                2 -> showExpenseDialog(null)
             }
         }
     }
@@ -84,7 +103,6 @@ class MainActivity : AppCompatActivity() {
         val tvTotalExpense = findViewById<TextView>(R.id.tvTotalExpense)
         val tvBalance = findViewById<TextView>(R.id.tvBalance)
 
-        // Observe month changes
         viewModel.currentMonth.observe(this) { month ->
             viewModel.currentYear.value?.let { year ->
                 val calendar = Calendar.getInstance()
@@ -103,7 +121,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Observe totals
         viewModel.totalIncome.observe(this) { income ->
             val incomeValue = income ?: 0.0
             tvTotalIncome.text = currencyFormat.format(incomeValue)
@@ -120,20 +137,171 @@ class MainActivity : AppCompatActivity() {
     private fun updateBalance(income: Double, expense: Double, tvBalance: TextView) {
         val balance = income - expense
         tvBalance.text = currencyFormat.format(balance)
-        tvBalance.setTextColor(
-            getColor(if (balance >= 0) R.color.income else R.color.expense)
-        )
+        tvBalance.setTextColor(getColor(if (balance >= 0) R.color.income else R.color.expense))
     }
 
-    // Show expense dialog for add or edit
+    private fun showSettingsDialog() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(R.layout.dialog_settings)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.white)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.9).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        val btnExportData = dialog.findViewById<MaterialButton>(R.id.btnExportData)
+        val btnImportData = dialog.findViewById<MaterialButton>(R.id.btnImportData)
+        val btnClose = dialog.findViewById<MaterialButton>(R.id.btnClose)
+
+        btnExportData.setOnClickListener {
+            dialog.dismiss()
+            exportData()
+        }
+
+        btnImportData.setOnClickListener {
+            dialog.dismiss()
+            importFileLauncher.launch("application/json")
+        }
+
+        btnClose.setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+    }
+
+    private fun showMonthPickerDialog() {
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.setContentView(R.layout.dialog_month_picker)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.white)
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.9).toInt(),
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+
+        val tvYear = dialog.findViewById<TextView>(R.id.tvYear)
+        val btnPrevYear = dialog.findViewById<ImageButton>(R.id.btnPrevYear)
+        val btnNextYear = dialog.findViewById<ImageButton>(R.id.btnNextYear)
+        val btnCancel = dialog.findViewById<MaterialButton>(R.id.btnCancel)
+
+        var selectedYear = viewModel.currentYear.value ?: Calendar.getInstance().get(Calendar.YEAR)
+        val currentMonth = viewModel.currentMonth.value ?: (Calendar.getInstance().get(Calendar.MONTH) + 1)
+
+        tvYear.text = selectedYear.toString()
+
+        btnPrevYear.setOnClickListener {
+            selectedYear--
+            tvYear.text = selectedYear.toString()
+            updateMonthHighlight(dialog, currentMonth, selectedYear)
+        }
+
+        btnNextYear.setOnClickListener {
+            selectedYear++
+            tvYear.text = selectedYear.toString()
+            updateMonthHighlight(dialog, currentMonth, selectedYear)
+        }
+
+        // Month buttons
+        val monthIds = listOf(
+            R.id.monthJan, R.id.monthFeb, R.id.monthMar, R.id.monthApr,
+            R.id.monthMay, R.id.monthJun, R.id.monthJul, R.id.monthAug,
+            R.id.monthSep, R.id.monthOct, R.id.monthNov, R.id.monthDec
+        )
+
+        monthIds.forEachIndexed { index, id ->
+            val monthView = dialog.findViewById<TextView>(id)
+            monthView.setOnClickListener {
+                viewModel.setMonth(index + 1, selectedYear)
+                dialog.dismiss()
+            }
+        }
+
+        // Highlight current selection
+        updateMonthHighlight(dialog, currentMonth, selectedYear)
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+
+        dialog.show()
+    }
+
+    private fun updateMonthHighlight(dialog: Dialog, currentMonth: Int, selectedYear: Int) {
+        val monthIds = listOf(
+            R.id.monthJan, R.id.monthFeb, R.id.monthMar, R.id.monthApr,
+            R.id.monthMay, R.id.monthJun, R.id.monthJul, R.id.monthAug,
+            R.id.monthSep, R.id.monthOct, R.id.monthNov, R.id.monthDec
+        )
+
+        val currentSelectedMonth = viewModel.currentMonth.value ?: currentMonth
+        val currentSelectedYear = viewModel.currentYear.value ?: Calendar.getInstance().get(Calendar.YEAR)
+
+        monthIds.forEachIndexed { index, id ->
+            val monthView = dialog.findViewById<TextView>(id)
+            if (index + 1 == currentSelectedMonth && selectedYear == currentSelectedYear) {
+                monthView.setBackgroundResource(R.drawable.month_selected_background)
+                monthView.setTextColor(getColor(android.R.color.white))
+            } else {
+                monthView.setBackgroundResource(android.R.color.transparent)
+                monthView.setTextColor(getColor(R.color.text_primary))
+            }
+        }
+    }
+
+    private fun exportData() {
+        lifecycleScope.launch {
+            val expenses = viewModel.getAllExpenses()
+            val incomes = viewModel.getAllIncomes()
+
+            if (expenses.isEmpty() && incomes.isEmpty()) {
+                Toast.makeText(this@MainActivity, "No data to export", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val result = backupManager.exportToDownloads(expenses, incomes)
+            result.onSuccess { path ->
+                Toast.makeText(this@MainActivity, "Data exported to Downloads folder", Toast.LENGTH_LONG).show()
+            }.onFailure { error ->
+                Toast.makeText(this@MainActivity, "Export failed: ${error.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun importDataFromUri(uri: Uri) {
+        lifecycleScope.launch {
+            try {
+                val inputStream = contentResolver.openInputStream(uri)
+                val json = inputStream?.bufferedReader()?.readText() ?: return@launch
+
+                val gson = com.google.gson.Gson()
+                val backupData = gson.fromJson(json, com.expensetracker.data.BackupData::class.java)
+
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Import Data")
+                    .setMessage("This will add ${backupData.expenses.size} expenses and ${backupData.incomes.size} incomes. Continue?")
+                    .setPositiveButton("Import") { _, _ ->
+                        lifecycleScope.launch {
+                            backupData.expenses.forEach { expense ->
+                                viewModel.insertExpense(expense.copy(id = 0))
+                            }
+                            backupData.incomes.forEach { income ->
+                                viewModel.insertIncome(income.copy(id = 0))
+                            }
+                            Toast.makeText(this@MainActivity, "Data imported successfully", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Import failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     fun showExpenseDialog(expense: Expense?) {
         val isEdit = expense != null
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setContentView(R.layout.dialog_add_expense)
         dialog.window?.setBackgroundDrawableResource(android.R.color.white)
-
-        // Make dialog wider
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.9).toInt(),
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -141,7 +309,8 @@ class MainActivity : AppCompatActivity() {
 
         val tvTitle = dialog.findViewById<TextView>(R.id.tvDialogTitle)
         val etAmount = dialog.findViewById<EditText>(R.id.etAmount)
-        val spinnerCategory = dialog.findViewById<Spinner>(R.id.spinnerCategory)
+        val autoCompleteCategory = dialog.findViewById<AutoCompleteTextView>(R.id.autoCompleteCategory)
+        val btnAddCategory = dialog.findViewById<ImageButton>(R.id.btnAddCategory)
         val etDescription = dialog.findViewById<EditText>(R.id.etDescription)
         val btnSelectDate = dialog.findViewById<Button>(R.id.btnSelectDate)
         val btnCancel = dialog.findViewById<Button>(R.id.btnCancel)
@@ -150,29 +319,56 @@ class MainActivity : AppCompatActivity() {
 
         tvTitle.text = if (isEdit) "Edit Expense" else "Add Expense"
         btnSave.text = if (isEdit) "Update" else "Save"
+        btnDelete.visibility = if (isEdit) View.VISIBLE else View.GONE
 
-        // Show delete button only in edit mode
-        btnDelete.visibility = if (isEdit) android.view.View.VISIBLE else android.view.View.GONE
+        // Setup category autocomplete
+        val categoryList = mutableListOf<String>()
+        val categoryAdapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, categoryList)
+        autoCompleteCategory.setAdapter(categoryAdapter)
+        autoCompleteCategory.threshold = 1 // Start showing suggestions after 1 character
 
-        // Setup category spinner
-        val categories = ExpenseCategory.values().map { it.displayName }
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, categories)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spinnerCategory.adapter = adapter
+        // Load categories from database
+        lifecycleScope.launch {
+            val categories = viewModel.getAllCategoryNames()
+            categoryList.clear()
+            categoryList.addAll(categories)
+            categoryAdapter.notifyDataSetChanged()
 
-        // Initialize date
+            // Set existing category if editing
+            if (isEdit && expense != null) {
+                autoCompleteCategory.setText(expense.category, false)
+            }
+        }
+
+        // Show dropdown when clicked
+        autoCompleteCategory.setOnClickListener {
+            autoCompleteCategory.showDropDown()
+        }
+
+        autoCompleteCategory.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                autoCompleteCategory.showDropDown()
+            }
+        }
+
+        // Add new category button
+        btnAddCategory.setOnClickListener {
+            showAddCategoryDialog { newCategory ->
+                if (newCategory.isNotBlank()) {
+                    viewModel.addCategory(newCategory)
+                    categoryList.add(newCategory)
+                    categoryAdapter.notifyDataSetChanged()
+                    autoCompleteCategory.setText(newCategory, false)
+                    Toast.makeText(this, "Category '$newCategory' added", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         val selectedDate = Calendar.getInstance()
         if (isEdit) {
-            // Pre-fill data for editing
             etAmount.setText(expense!!.amount.toString())
             etDescription.setText(expense.description)
             selectedDate.timeInMillis = expense.date
-
-            // Select the correct category
-            val categoryIndex = categories.indexOf(expense.category)
-            if (categoryIndex >= 0) {
-                spinnerCategory.setSelection(categoryIndex)
-            }
         } else {
             val viewMonth = viewModel.currentMonth.value ?: (selectedDate.get(Calendar.MONTH) + 1)
             val viewYear = viewModel.currentYear.value ?: selectedDate.get(Calendar.YEAR)
@@ -182,25 +378,17 @@ class MainActivity : AppCompatActivity() {
 
         btnSelectDate.text = dateFormat.format(selectedDate.time)
 
-        // Date picker
         btnSelectDate.setOnClickListener {
-            DatePickerDialog(
-                this,
-                { _, year, month, dayOfMonth ->
-                    selectedDate.set(Calendar.YEAR, year)
-                    selectedDate.set(Calendar.MONTH, month)
-                    selectedDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                    btnSelectDate.text = dateFormat.format(selectedDate.time)
-                },
-                selectedDate.get(Calendar.YEAR),
-                selectedDate.get(Calendar.MONTH),
-                selectedDate.get(Calendar.DAY_OF_MONTH)
-            ).show()
+            DatePickerDialog(this, { _, year, month, dayOfMonth ->
+                selectedDate.set(Calendar.YEAR, year)
+                selectedDate.set(Calendar.MONTH, month)
+                selectedDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                btnSelectDate.text = dateFormat.format(selectedDate.time)
+            }, selectedDate.get(Calendar.YEAR), selectedDate.get(Calendar.MONTH), selectedDate.get(Calendar.DAY_OF_MONTH)).show()
         }
 
         btnCancel.setOnClickListener { dialog.dismiss() }
 
-        // Delete button
         btnDelete.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Delete Expense")
@@ -227,14 +415,23 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val category = spinnerCategory.selectedItem.toString()
-            val description = etDescription.text.toString()
+            val category = autoCompleteCategory.text.toString().trim()
+            if (category.isEmpty()) {
+                Toast.makeText(this, "Please select a category", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            // Validate category exists in the list
+            if (!categoryList.contains(category)) {
+                Toast.makeText(this, "Please select a valid category from the list", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
 
             val newExpense = Expense(
                 id = expense?.id ?: 0,
                 amount = amount,
                 category = category,
-                description = description,
+                description = etDescription.text.toString(),
                 date = selectedDate.timeInMillis,
                 month = selectedDate.get(Calendar.MONTH) + 1,
                 year = selectedDate.get(Calendar.YEAR)
@@ -253,15 +450,30 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    // Show income dialog for add or edit
+    private fun showAddCategoryDialog(onCategoryAdded: (String) -> Unit) {
+        val editText = EditText(this)
+        editText.hint = "Enter category name"
+        editText.setPadding(48, 32, 48, 32)
+
+        AlertDialog.Builder(this)
+            .setTitle("Add New Category")
+            .setView(editText)
+            .setPositiveButton("Add") { _, _ ->
+                val categoryName = editText.text.toString().trim()
+                if (categoryName.isNotBlank()) {
+                    onCategoryAdded(categoryName)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     fun showIncomeDialog(income: Income?) {
         val isEdit = income != null
         val dialog = Dialog(this)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setContentView(R.layout.dialog_add_income)
         dialog.window?.setBackgroundDrawableResource(android.R.color.white)
-
-        // Make dialog wider
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.9).toInt(),
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -278,14 +490,10 @@ class MainActivity : AppCompatActivity() {
 
         tvTitle.text = if (isEdit) "Edit Income" else "Add Income"
         btnSave.text = if (isEdit) "Update" else "Save"
+        btnDelete.visibility = if (isEdit) View.VISIBLE else View.GONE
 
-        // Show delete button only in edit mode
-        btnDelete.visibility = if (isEdit) android.view.View.VISIBLE else android.view.View.GONE
-
-        // Initialize date
         val selectedDate = Calendar.getInstance()
         if (isEdit) {
-            // Pre-fill data for editing
             etAmount.setText(income!!.amount.toString())
             etSource.setText(income.source)
             etDescription.setText(income.description)
@@ -299,25 +507,17 @@ class MainActivity : AppCompatActivity() {
 
         btnSelectDate.text = dateFormat.format(selectedDate.time)
 
-        // Date picker
         btnSelectDate.setOnClickListener {
-            DatePickerDialog(
-                this,
-                { _, year, month, dayOfMonth ->
-                    selectedDate.set(Calendar.YEAR, year)
-                    selectedDate.set(Calendar.MONTH, month)
-                    selectedDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                    btnSelectDate.text = dateFormat.format(selectedDate.time)
-                },
-                selectedDate.get(Calendar.YEAR),
-                selectedDate.get(Calendar.MONTH),
-                selectedDate.get(Calendar.DAY_OF_MONTH)
-            ).show()
+            DatePickerDialog(this, { _, year, month, dayOfMonth ->
+                selectedDate.set(Calendar.YEAR, year)
+                selectedDate.set(Calendar.MONTH, month)
+                selectedDate.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                btnSelectDate.text = dateFormat.format(selectedDate.time)
+            }, selectedDate.get(Calendar.YEAR), selectedDate.get(Calendar.MONTH), selectedDate.get(Calendar.DAY_OF_MONTH)).show()
         }
 
         btnCancel.setOnClickListener { dialog.dismiss() }
 
-        // Delete button
         btnDelete.setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle("Delete Income")
@@ -350,13 +550,11 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val description = etDescription.text.toString()
-
             val newIncome = Income(
                 id = income?.id ?: 0,
                 amount = amount,
                 source = source,
-                description = description,
+                description = etDescription.text.toString(),
                 date = selectedDate.timeInMillis,
                 month = selectedDate.get(Calendar.MONTH) + 1,
                 year = selectedDate.get(Calendar.YEAR)

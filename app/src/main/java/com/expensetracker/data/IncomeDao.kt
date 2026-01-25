@@ -22,4 +22,7 @@ interface IncomeDao {
 
     @Query("SELECT * FROM incomes ORDER BY date DESC")
     fun getAllIncomes(): LiveData<List<Income>>
+
+    @Query("SELECT * FROM incomes ORDER BY date DESC")
+    suspend fun getAllIncomesSync(): List<Income>
 }

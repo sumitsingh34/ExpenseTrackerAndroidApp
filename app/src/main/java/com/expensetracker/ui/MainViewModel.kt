@@ -20,7 +20,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         val database = AppDatabase.getDatabase(application)
-        repository = ExpenseTrackerRepository(database.expenseDao(), database.incomeDao())
+        repository = ExpenseTrackerRepository(
+            database.expenseDao(),
+            database.incomeDao(),
+            database.categoryDao()
+        )
 
         val calendar = Calendar.getInstance()
         _currentMonth.value = calendar.get(Calendar.MONTH) + 1
@@ -33,6 +37,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         monthYearTrigger.addSource(_currentYear) { year ->
             val month = _currentMonth.value ?: (calendar.get(Calendar.MONTH) + 1)
             monthYearTrigger.value = Pair(month, year)
+        }
+
+        // Initialize default categories on first run
+        viewModelScope.launch {
+            initializeCategories()
+        }
+    }
+
+    private suspend fun initializeCategories() {
+        val existingCategories = repository.getAllCategoryNames()
+        if (existingCategories.isEmpty()) {
+            ExpenseCategory.values().forEach { category ->
+                repository.addCategory(category.displayName)
+            }
         }
     }
 
@@ -55,6 +73,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val categoryTotals: LiveData<List<CategoryTotal>> = monthYearTrigger.switchMap { (month, year) ->
         repository.getExpensesByCategory(month, year)
     }
+
+    val categories: LiveData<List<Category>> = repository.getAllCategories()
 
     fun setMonth(month: Int, year: Int) {
         _currentMonth.value = month
@@ -108,4 +128,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteIncome(income: Income) = viewModelScope.launch {
         repository.deleteIncome(income)
     }
+
+    suspend fun getAllExpenses(): List<Expense> = repository.getAllExpensesSync()
+
+    suspend fun getAllIncomes(): List<Income> = repository.getAllIncomesSync()
+
+    suspend fun getAllCategoryNames(): List<String> = repository.getAllCategoryNames()
+
+    fun addCategory(name: String) = viewModelScope.launch {
+        repository.addCategory(name)
+    }
+
+    suspend fun getAllCategoriesSync(): List<Category> = repository.getAllCategoriesSync()
 }
