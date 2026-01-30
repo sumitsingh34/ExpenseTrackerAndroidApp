@@ -1,5 +1,6 @@
 package com.expensetracker.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -32,7 +33,16 @@ class CategoryListFragment : Fragment() {
         recyclerView = view.findViewById(R.id.recyclerView)
         tvEmpty = view.findViewById(R.id.tvEmpty)
 
-        adapter = CategoryAdapter()
+        adapter = CategoryAdapter { categoryTotal ->
+            // Navigate to CategoryExpensesActivity when a category is clicked
+            val intent = Intent(requireContext(), CategoryExpensesActivity::class.java).apply {
+                putExtra(CategoryExpensesActivity.EXTRA_CATEGORY_NAME, categoryTotal.category)
+                putExtra(CategoryExpensesActivity.EXTRA_CATEGORY_TOTAL, categoryTotal.total)
+                putExtra(CategoryExpensesActivity.EXTRA_MONTH, viewModel.currentMonth.value)
+                putExtra(CategoryExpensesActivity.EXTRA_YEAR, viewModel.currentYear.value)
+            }
+            startActivity(intent)
+        }
 
         recyclerView.layoutManager = LinearLayoutManager(context)
         recyclerView.adapter = adapter

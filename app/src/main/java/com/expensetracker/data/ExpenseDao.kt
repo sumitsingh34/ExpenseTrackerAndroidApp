@@ -28,6 +28,9 @@ interface ExpenseDao {
 
     @Query("SELECT category, SUM(amount) as total FROM expenses WHERE month = :month AND year = :year GROUP BY category")
     fun getExpensesByCategory(month: Int, year: Int): LiveData<List<CategoryTotal>>
+
+    @Query("SELECT * FROM expenses WHERE category = :category AND month = :month AND year = :year ORDER BY date DESC")
+    fun getExpensesByCategoryName(category: String, month: Int, year: Int): LiveData<List<Expense>>
 }
 
 data class CategoryTotal(

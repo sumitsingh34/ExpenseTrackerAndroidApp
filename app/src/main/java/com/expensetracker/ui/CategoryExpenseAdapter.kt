@@ -10,45 +10,50 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.expensetracker.R
-import com.expensetracker.data.CategoryTotal
+import com.expensetracker.data.Expense
 import com.expensetracker.data.ExpenseCategory
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.*
 
-class CategoryAdapter(
-    private val onItemClick: (CategoryTotal) -> Unit
-) : ListAdapter<CategoryTotal, CategoryAdapter.CategoryViewHolder>(CategoryDiffCallback()) {
+class CategoryExpenseAdapter(
+    private val onItemClick: (Expense) -> Unit
+) : ListAdapter<Expense, CategoryExpenseAdapter.ExpenseViewHolder>(ExpenseDiffCallback()) {
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CategoryViewHolder {
+    private val currencyFormat = NumberFormat.getCurrencyInstance(Locale.US)
+    private val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ExpenseViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_category, parent, false)
-        return CategoryViewHolder(view)
+            .inflate(R.layout.item_expense, parent, false)
+        return ExpenseViewHolder(view)
     }
 
-    override fun onBindViewHolder(holder: CategoryViewHolder, position: Int) {
+    override fun onBindViewHolder(holder: ExpenseViewHolder, position: Int) {
         holder.bind(getItem(position))
     }
 
-    inner class CategoryViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+    inner class ExpenseViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvCategory: TextView = itemView.findViewById(R.id.tvCategory)
+        private val tvDescription: TextView = itemView.findViewById(R.id.tvDescription)
+        private val tvDate: TextView = itemView.findViewById(R.id.tvDate)
         private val tvAmount: TextView = itemView.findViewById(R.id.tvAmount)
         private val tvCategoryIcon: TextView = itemView.findViewById(R.id.tvCategoryIcon)
         private val categoryIconBg: FrameLayout = itemView.findViewById(R.id.categoryIconBg)
 
-        private val currencyFormat = NumberFormat.getCurrencyInstance(Locale.US)
-
-        fun bind(categoryTotal: CategoryTotal) {
-            tvCategory.text = categoryTotal.category
-            tvAmount.text = currencyFormat.format(categoryTotal.total)
+        fun bind(expense: Expense) {
+            tvCategory.text = expense.category
+            tvDescription.text = expense.description.ifEmpty { "No description" }
+            tvDate.text = dateFormat.format(Date(expense.date))
+            tvAmount.text = currencyFormat.format(expense.amount)
 
             // Set category icon and color
-            val categoryColor = getCategoryColor(categoryTotal.category)
-            tvCategoryIcon.text = categoryTotal.category.first().toString()
+            val categoryColor = getCategoryColor(expense.category)
+            tvCategoryIcon.text = expense.category.first().toString()
             categoryIconBg.background.setTint(ContextCompat.getColor(itemView.context, categoryColor))
 
-            // Set click listener
             itemView.setOnClickListener {
-                onItemClick(categoryTotal)
+                onItemClick(expense)
             }
         }
 
@@ -68,12 +73,12 @@ class CategoryAdapter(
         }
     }
 
-    class CategoryDiffCallback : DiffUtil.ItemCallback<CategoryTotal>() {
-        override fun areItemsTheSame(oldItem: CategoryTotal, newItem: CategoryTotal): Boolean {
-            return oldItem.category == newItem.category
+    class ExpenseDiffCallback : DiffUtil.ItemCallback<Expense>() {
+        override fun areItemsTheSame(oldItem: Expense, newItem: Expense): Boolean {
+            return oldItem.id == newItem.id
         }
 
-        override fun areContentsTheSame(oldItem: CategoryTotal, newItem: CategoryTotal): Boolean {
+        override fun areContentsTheSame(oldItem: Expense, newItem: Expense): Boolean {
             return oldItem == newItem
         }
     }

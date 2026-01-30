@@ -24,6 +24,9 @@ class ExpenseTrackerRepository(
     fun getExpensesByCategory(month: Int, year: Int): LiveData<List<CategoryTotal>> =
         expenseDao.getExpensesByCategory(month, year)
 
+    fun getExpensesByCategoryName(category: String, month: Int, year: Int): LiveData<List<Expense>> =
+        expenseDao.getExpensesByCategoryName(category, month, year)
+
     // Income operations
     suspend fun insertIncome(income: Income) = incomeDao.insert(income)
     suspend fun updateIncome(income: Income) = incomeDao.update(income)
